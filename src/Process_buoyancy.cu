@@ -45,9 +45,11 @@
 #include <malloc.h>
 #include <sys/types.h>
 #include <stdlib.h>				/* for "system" command */
+#include <cuda_runtime.h>
 
 #include "element_definitions.h"
 #include "global_defs.h"
+
 
 void process_temp_field(struct All_variables *E, int ii)
 {
