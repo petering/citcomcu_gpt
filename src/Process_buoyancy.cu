@@ -223,7 +223,7 @@ void heat_flux(struct All_variables *E)
 __global__ void vecMulKernel_1(float* A_d, float* B_d, float* C_d, int n,int i)
 {
 	int j = threadIdx.x + blockDim.x * blockIdx.x;
-	int index = GNPINDEX(j,i);
+	int index = ((1*((j)-1)) + ((i)-1));
 	if(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];
 }
 
