@@ -33,6 +33,7 @@ LIB= $(LIB_PATH) $(LIB_LIST) -lm
 #CC=/usr/lib/cmplrs/cc/gemc_cc
 #CC=$(HOME)/usr/local/mpich/bin/mpicc
 CC=mpicc
+NVCC=nvcc
 F77=f77
 CPP=
 
@@ -152,7 +153,7 @@ CFILES= Advection_diffusion.c\
 	Parallel_related.c\
 	Parsing.c\
 	Phase_change.c\
-	Process_buoyancy.c\
+	
 	Process_velocity.c\
 	Profiling.c\
 	Shape_functions.c\
@@ -163,6 +164,7 @@ CFILES= Advection_diffusion.c\
 	Topo_gravity.c\
 	Viscosity_structures.c
 
+CUFILES= Process_buoyancy.cu
 
 
 HEADER = element_definitions.h \
@@ -173,7 +175,7 @@ HEADER = element_definitions.h \
 
 FFILES=#Blas_lapack_interfaces.F
 
-OBJFILES=$(CFILES:.c=.o) $(FFILES:.f=.o)
+OBJFILES=$(CFILES:.c=.o) $(FFILES:.f=.o) $(CUFILES:.cu=.o)
 
 
 ####################################################################
@@ -183,6 +185,9 @@ OBJFILES=$(CFILES:.c=.o) $(FFILES:.f=.o)
 default: citcom.mpi
 
 citcom.mpi: $(OBJFILES) $(HEADER) Makefile
+#	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
+	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c  $(CFILES)
+	$(NVCC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c $(CUFILES)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 
 clean:
@@ -272,8 +277,8 @@ Phase_change.o: $(HEADER) Phase_change.c
 Process_velocity.o: $(HEADER) Process_velocity.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_velocity.c
 
-Process_buoyancy.o: $(HEADER) Process_buoyancy.c
-	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_buoyancy.c
+Process_buoyancy.o: $(HEADER) Process_buoyancy.cu
+	$(NVCC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_buoyancy.cu
 			
 Profiling.o: $(HEADER) Profiling.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Profiling.c
