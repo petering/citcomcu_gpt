@@ -201,6 +201,97 @@ void heat_flux(struct All_variables *E)
 
 	return;
 }
+/* ===================
+	分开调用
+    GPU caculate  
+	n == ends
+	A_d == VZ 
+	B_d == E->ppt
+	C_d == u
+
+	A_d == E->T[X] X == E->ien[e].node
+	B_d == E->N.ppt
+	C_d == T
+
+	A_d == E->T[X] X == E->ien[e].node
+	B_d == E->gNX[e].ppt
+	C_d == dTdz
+   =================== */
+
+__global__ void vecMulKernel_1(float* A_d, float* B_d, float* C_d, int n,int i)
+{
+	int j = threadIdx.x + blockDim.x * blockIdx.x;
+	int index = GNPINDEX(j,i);
+	if(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];
+}
+
+__global__ void vecMulKernel_2(float* A_d, float* B_d, float* C_d, float * D_d, int n,int i)
+{
+	int j = threadIdx.x + blockDim.x * blockIdx.x;
+	int index = GNPINDEX(j,i);
+	if(j > 0 && j <= n) C_d[j] = A_d[D_d[j]] * B_d[index];
+}
+
+__global__ void vecMulKernel_3(float* A_d, float* B_d, float* C_d, int n,int i)
+{
+	int j = threadIdx.x + blockDim.x * blockIdx.x;
+	int index = GNPINDEX(j,i);
+	if(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];
+}
+
+
+
+int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, float * Nppt,float * node, float * gNx_ppt) 
+{
+    size_t size = (n+1) * sizeof(float);
+
+    // host memery--no need
+
+    float *da = NULL;
+    float *db = NULL;
+    float *dc = NULL;
+
+    cudaMalloc((void **)&da, size);
+    cudaMalloc((void **)&db, size);
+    cudaMalloc((void **)&dc, size);
+
+    cudaMemcpy(da,VZ,size,cudaMemcpyHostToDevice);
+    cudaMemcpy(db,Nppt,size,cudaMemcpyHostToDevice);
+    cudaMemcpy(dc,u,size,cudaMemcpyHostToDevice);
+
+    struct timeval t1, t2;
+
+    int threadPerBlock = 256;
+    int blockPerGrid = (n + threadPerBlock - 1)/threadPerBlock;
+    printf("threadPerBlock: %d \nblockPerGrid: %d \n",threadPerBlock,blockPerGrid);
+
+    gettimeofday(&t1, NULL);
+
+    vecMulKernel_1 <<< blockPerGrid, threadPerBlock >>> (da, db, dc, n);
+
+    gettimeofday(&t2, NULL);
+
+    cudaMemcpy(u,dc,size,cudaMemcpyDeviceToHost);
+	double sum = 0.0;
+	for(int k = 1; k <= n; k++)
+	{
+		sum += u[k]; 
+	}
+	u[i] = sum;
+    //for (int i = 0; i < 10; i++) 
+    //    cout << vecA[i] << " " << vecB[i] << " " << vecC[i] << endl;
+    double timeuse = (t2.tv_sec - t1.tv_sec) + (double)(t2.tv_usec - t1.tv_usec)/1000000.0;
+	printf("timeuse : %le\n", timeuse);
+
+    cudaFree(da);
+    cudaFree(db);
+    cudaFree(dc);
+
+    // free(a);
+    // free(b);
+    // free(c);
+    return 0;
+}
 
 /* ===================
     Surface heat flux  
@@ -250,9 +341,17 @@ void heat_flux1(struct All_variables *E)
 			u[i] = 0.0;
 			T[i] = 0.0;
 			dTdz[i] = 0.0;
+			/**
+			 * @brief 这里尝试用GPU加速
+			 *        1. 需传入的参数为：1. ends,e，i
+			 * 		  2.  float *u,float *T,float *dTdz,VZ[j].E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[]
+			 * 		 2. 返回三个数组的结果
+			 * 		3. 对返回结果进行加和赋值给i
+			 */
+			vecGPU(ends, e, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node, E->gNX[e].ppt);
 			for(j = 1; j <= ends; j++)
 			{
-				u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
+				//u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
 				T[i] += E->T[E->ien[e].node[j]] * E->N.ppt[GNPINDEX(j, i)];
 				dTdz[i] += -E->T[E->ien[e].node[j]] * E->gNX[e].ppt[GNPXINDEX(2, j, i)];
 			}

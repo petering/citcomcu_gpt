@@ -1,0 +1,152 @@
+[1mdiff --git a/src/Process_buoyancy.c b/src/Process_buoyancy.c[m
+[1mindex 30ec02c..e08e9a1 100644[m
+[1m--- a/src/Process_buoyancy.c[m
+[1m+++ b/src/Process_buoyancy.c[m
+[36m@@ -201,6 +201,97 @@[m [mvoid heat_flux(struct All_variables *E)[m
+ [m
+ 	return;[m
+ }[m
+[32m+[m[32m/* ===================[m
+[32m+[m	[32m分开调用[m
+[32m+[m[32m    GPU caculate[m[41m  [m
+[32m+[m	[32mn == ends[m
+[32m+[m	[32mA_d == VZ[m[41m [m
+[32m+[m	[32mB_d == E->ppt[m
+[32m+[m	[32mC_d == u[m
+[32m+[m
+[32m+[m	[32mA_d == E->T[X] X == E->ien[e].node[m
+[32m+[m	[32mB_d == E->N.ppt[m
+[32m+[m	[32mC_d == T[m
+[32m+[m
+[32m+[m	[32mA_d == E->T[X] X == E->ien[e].node[m
+[32m+[m	[32mB_d == E->gNX[e].ppt[m
+[32m+[m	[32mC_d == dTdz[m
+[32m+[m[32m   =================== */[m
+[32m+[m
+[32m+[m[32m__global__ void vecMulKernel_1(float* A_d, float* B_d, float* C_d, int n,int i)[m
+[32m+[m[32m{[m
+[32m+[m	[32mint j = threadIdx.x + blockDim.x * blockIdx.x;[m
+[32m+[m	[32mint index = GNPINDEX(j,i);[m
+[32m+[m	[32mif(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m__global__ void vecMulKernel_2(float* A_d, float* B_d, float* C_d, float * D_d, int n,int i)[m
+[32m+[m[32m{[m
+[32m+[m	[32mint j = threadIdx.x + blockDim.x * blockIdx.x;[m
+[32m+[m	[32mint index = GNPINDEX(j,i);[m
+[32m+[m	[32mif(j > 0 && j <= n) C_d[j] = A_d[D_d[j]] * B_d[index];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m__global__ void vecMulKernel_3(float* A_d, float* B_d, float* C_d, int n,int i)[m
+[32m+[m[32m{[m
+[32m+[m	[32mint j = threadIdx.x + blockDim.x * blockIdx.x;[m
+[32m+[m	[32mint index = GNPINDEX(j,i);[m
+[32m+[m	[32mif(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32mint vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, float * Nppt,float * node, float * gNx_ppt)[m[41m [m
+[32m+[m[32m{[m
+[32m+[m[32m    size_t size = (n+1) * sizeof(float);[m
+[32m+[m
+[32m+[m[32m    // host memery--no need[m
+[32m+[m
+[32m+[m[32m    float *da = NULL;[m
+[32m+[m[32m    float *db = NULL;[m
+[32m+[m[32m    float *dc = NULL;[m
+[32m+[m
+[32m+[m[32m    cudaMalloc((void **)&da, size);[m
+[32m+[m[32m    cudaMalloc((void **)&db, size);[m
+[32m+[m[32m    cudaMalloc((void **)&dc, size);[m
+[32m+[m
+[32m+[m[32m    cudaMemcpy(da,VZ,size,cudaMemcpyHostToDevice);[m
+[32m+[m[32m    cudaMemcpy(db,Nppt,size,cudaMemcpyHostToDevice);[m
+[32m+[m[32m    cudaMemcpy(dc,u,size,cudaMemcpyHostToDevice);[m
+[32m+[m
+[32m+[m[32m    struct timeval t1, t2;[m
+[32m+[m
+[32m+[m[32m    int threadPerBlock = 256;[m
+[32m+[m[32m    int blockPerGrid = (n + threadPerBlock - 1)/threadPerBlock;[m
+[32m+[m[32m    printf("threadPerBlock: %d \nblockPerGrid: %d \n",threadPerBlock,blockPerGrid);[m
+[32m+[m
+[32m+[m[32m    gettimeofday(&t1, NULL);[m
+[32m+[m
+[32m+[m[32m    vecMulKernel_1 <<< blockPerGrid, threadPerBlock >>> (da, db, dc, n);[m
+[32m+[m
+[32m+[m[32m    gettimeofday(&t2, NULL);[m
+[32m+[m
+[32m+[m[32m    cudaMemcpy(u,dc,size,cudaMemcpyDeviceToHost);[m
+[32m+[m	[32mdouble sum = 0.0;[m
+[32m+[m	[32mfor(int k = 1; k <= n; k++)[m
+[32m+[m	[32m{[m
+[32m+[m		[32msum += u[k];[m[41m [m
+[32m+[m	[32m}[m
+[32m+[m	[32mu[i] = sum;[m
+[32m+[m[32m    //for (int i = 0; i < 10; i++)[m[41m [m
+[32m+[m[32m    //    cout << vecA[i] << " " << vecB[i] << " " << vecC[i] << endl;[m
+[32m+[m[32m    double timeuse = (t2.tv_sec - t1.tv_sec) + (double)(t2.tv_usec - t1.tv_usec)/1000000.0;[m
+[32m+[m	[32mprintf("timeuse : %le\n", timeuse);[m
+[32m+[m
+[32m+[m[32m    cudaFree(da);[m
+[32m+[m[32m    cudaFree(db);[m
+[32m+[m[32m    cudaFree(dc);[m
+[32m+[m
+[32m+[m[32m    // free(a);[m
+[32m+[m[32m    // free(b);[m
+[32m+[m[32m    // free(c);[m
+[32m+[m[32m    return 0;[m
+[32m+[m[32m}[m
+ [m
+ /* ===================[m
+     Surface heat flux  [m
+[36m@@ -250,9 +341,17 @@[m [mvoid heat_flux1(struct All_variables *E)[m
+ 			u[i] = 0.0;[m
+ 			T[i] = 0.0;[m
+ 			dTdz[i] = 0.0;[m
+[32m+[m			[32m/**[m
+[32m+[m			[32m * @brief 这里尝试用GPU加速[m
+[32m+[m			[32m *        1. 需传入的参数为：1. ends,e，i[m
+[32m+[m			[32m * 		  2.  float *u,float *T,float *dTdz,VZ[j].E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[][m
+[32m+[m			[32m * 		 2. 返回三个数组的结果[m
+[32m+[m			[32m * 		3. 对返回结果进行加和赋值给i[m
+[32m+[m			[32m */[m
+[32m+[m			[32mvecGPU(ends, e, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node, E->gNX[e].ppt);[m
+ 			for(j = 1; j <= ends; j++)[m
+ 			{[m
+[31m-				u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];[m
+[32m+[m				[32m//u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];[m
+ 				T[i] += E->T[E->ien[e].node[j]] * E->N.ppt[GNPINDEX(j, i)];[m
+ 				dTdz[i] += -E->T[E->ien[e].node[j]] * E->gNX[e].ppt[GNPXINDEX(2, j, i)];[m
+ 			}[m
+[1mdiff --git a/src/Size_does_matter.c b/src/Size_does_matter.c[m
+[1mindex a1c3225..63e4841 100644[m
+[1m--- a/src/Size_does_matter.c[m
+[1m+++ b/src/Size_does_matter.c[m
+[36m@@ -46,6 +46,7 @@[m
+ #include "element_definitions.h"[m
+ #include "global_defs.h"[m
+ #include <mpi.h>[m
+[32m+[m[32m#include<cuda_runtime.h>[m
+ [m
+ [m
+ void twiddle_thumbs(struct All_variables *yawn, int scratch_groin)[m
+[36m@@ -500,6 +501,18 @@[m [mvoid get_global_1d_shape_fn(struct All_variables *E, int el, struct Shape_functi[m
+ 			dxdy[3][1] = sin(to) * cos(fo);[m
+ 			dxdy[3][2] = sin(to) * sin(fo);[m
+ 			dxdy[3][3] = cos(to);[m
+[32m+[m			[32m/**[m
+[32m+[m			[32m * @brief 这里尝试改用GPU加速[m
+[32m+[m			[32m * 需要传入变量：1. oned 、 ii[m
+[32m+[m			[32m * 				2. el[m
+[32m+[m			[32m * 				3. int num[] = E->ien[el];[m
+[32m+[m			[32m * 				4. float *X1[4] = E->X;[m
+[32m+[m			[32m * 				5. double dxdy[][][m
+[32m+[m			[32m * 				6. double xx[][][m
+[32m+[m			[32m *[m[41m [m
+[32m+[m			[32m */[m
+[32m+[m[41m			[m
+[32m+[m[41m			[m
+ 			for(i = 1; i <= oned; i++)[m
+ 			{					/* nodes */[m
+ 				e = i + ii * oned;[m
