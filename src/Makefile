@@ -186,7 +186,7 @@ default: citcom.mpi
 citcom.mpi: $(OBJFILES) $(HEADER) Makefile
 #	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c  $(CFILES)
-	$(NVCC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c $(CUFILES)
+	$(NVCC) -c $(CUFILES)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 
 clean:
