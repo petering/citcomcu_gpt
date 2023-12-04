@@ -109,7 +109,7 @@ LinuxFLAGS=
 LinuxLDFLAGS=
 #LinuxOPTIM=-g
 #LinuxOPTIM=-O2
-LinuxOPTIM=-O2 -Wall -Wextra -pedantic -std=c99 -Wunused-function -D_GNU_SOURCE
+LinuxOPTIM=-O2 -Wall -Wextra -pedantic -std=c++11 -Wunused-function -D_GNU_SOURCE
 
 ####################################
 #PARAGON 

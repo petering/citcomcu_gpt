@@ -190,11 +190,11 @@ void common_initial_fields(struct All_variables *);
 void initial_pressure(struct All_variables *);
 void initial_velocity(struct All_variables *);
 /* io.c */
-bool io_directory_create(const char *);
-bool io_directory_exists(const char *);
+_Bool io_directory_create(const char *);
+_Bool io_directory_exists(const char *);
 void io_error(void);
-bool io_results(struct All_variables *);
-bool io_setup_path(struct All_variables *);
+_Bool io_results(struct All_variables *);
+_Bool io_setup_path(struct All_variables *);
 /* Nodal_mesh.c */
 void node_locations(struct All_variables *);
 void pre_interpolation(struct All_variables *);
@@ -212,7 +212,7 @@ void visc_from_gint_to_ele(struct All_variables *, float *, float *, int);
 void visc_from_gint_to_nodes(struct All_variables *, float *, float *, int);
 void visc_from_nodes_to_gint(struct All_variables *, float *, float *, int);
 /* output_ascii.c */
-bool output_ascii(struct All_variables *);
+_Bool output_ascii(struct All_variables *);
 /* Output.c */
 void output_velo_related(struct All_variables *, int);
 void output_velo_related_binary(struct All_variables *, int);
@@ -224,7 +224,7 @@ void output_velo_related_gzdir(struct All_variables *, int);
 gzFile safe_gzopen(char *, char *);
 void process_restart_tc_gzdir(struct All_variables *);
 /* output_vtk.c */
-bool output_vtk(struct All_variables *);
+_Bool output_vtk(struct All_variables *);
 /* Pan_problem_misc_functions.c */
 int get_process_identifier(void);
 void unique_copy_file(struct All_variables *, char *, char *);
