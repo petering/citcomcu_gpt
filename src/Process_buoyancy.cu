@@ -43,6 +43,7 @@
 
 #include <math.h>
 #include <malloc.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <stdlib.h>				/* for "system" command */
 #include <cuda_runtime.h>
@@ -243,9 +244,10 @@ __global__ void vecMulKernel_3(float* A_d, float* B_d, float* C_d, int n,int i)
 
 
 
-int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, float * Nppt,float * node, float * gNx_ppt) 
+int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, double * Nppt, int * node, double * gNx_ppt) 
 {
     size_t size = (n+1) * sizeof(float);
+	size_t size_double = (n+1) * sizeof(double);
 
     // host memery--no need
 
@@ -254,11 +256,11 @@ int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, floa
     float *dc = NULL;
 
     cudaMalloc((void **)&da, size);
-    cudaMalloc((void **)&db, size);
+    cudaMalloc((void **)&db, size_double);
     cudaMalloc((void **)&dc, size);
 
     cudaMemcpy(da,VZ,size,cudaMemcpyHostToDevice);
-    cudaMemcpy(db,Nppt,size,cudaMemcpyHostToDevice);
+    cudaMemcpy(db,Nppt,size_double,cudaMemcpyHostToDevice);
     cudaMemcpy(dc,u,size,cudaMemcpyHostToDevice);
 
     struct timeval t1, t2;
@@ -274,7 +276,7 @@ int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, floa
     //gettimeofday(&t2, NULL);
 
     cudaMemcpy(u,dc,size,cudaMemcpyDeviceToHost);
-	double sum = 0.0;
+	float sum = 0.0;
 	for(int k = 1; k <= n; k++)
 	{
 		sum += u[k]; 
@@ -346,7 +348,7 @@ void heat_flux1(struct All_variables *E)
 			/**
 			 * @brief 这里尝试用GPU加速
 			 *        1. 需传入的参数为：1. ends,e，i
-			 * 		  2.  float *u,float *T,float *dTdz,VZ[j].E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[]
+			 * 		  2.  float *u,float *T,float *dTdz,VZ[j],(double)E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[]
 			 * 		 2. 返回三个数组的结果
 			 * 		3. 对返回结果进行加和赋值给i
 			 */
