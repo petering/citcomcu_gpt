@@ -277,7 +277,7 @@ Process_velocity.o: $(HEADER) Process_velocity.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_velocity.c
 
 Process_buoyancy.o: $(HEADER) Process_buoyancy.cu
-	$(NVCC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_buoyancy.cu
+	$(NVCC) $(FLAGS)  $(OBJFLAG)  Process_buoyancy.cu
 			
 Profiling.o: $(HEADER) Profiling.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Profiling.c
