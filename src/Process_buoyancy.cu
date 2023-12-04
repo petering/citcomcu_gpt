@@ -269,9 +269,9 @@ int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, floa
 
     gettimeofday(&t1, NULL);
 
-    vecMulKernel_1 <<< blockPerGrid, threadPerBlock >>> (da, db, dc, n);
+    vecMulKernel_1 <<< blockPerGrid, threadPerBlock >>> (da, db, dc, n, i);
 
-    gettimeofday(&t2, NULL);
+    //gettimeofday(&t2, NULL);
 
     cudaMemcpy(u,dc,size,cudaMemcpyDeviceToHost);
 	double sum = 0.0;
@@ -350,7 +350,7 @@ void heat_flux1(struct All_variables *E)
 			 * 		 2. 返回三个数组的结果
 			 * 		3. 对返回结果进行加和赋值给i
 			 */
-			vecGPU(ends, e, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node, E->gNX[e].ppt);
+			vecGPU(ends, e, i, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node, E->gNX[e].ppt);
 			for(j = 1; j <= ends; j++)
 			{
 				//u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
