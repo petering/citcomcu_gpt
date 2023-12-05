@@ -56,7 +56,7 @@ extern "C"{
 }
 
 
-extern "C{
+extern "C"{
 	void process_temp_field(struct All_variables *E, int ii)
 	{
 		if(((ii % E->control.record_every) == 0))
