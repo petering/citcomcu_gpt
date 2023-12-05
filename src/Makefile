@@ -109,7 +109,7 @@ LinuxFLAGS=
 LinuxLDFLAGS=
 #LinuxOPTIM=-g
 #LinuxOPTIM=-O2
-LinuxOPTIM=-O2 -Wall -Wextra -pedantic -std=c++11 -Wunused-function -D_GNU_SOURCE
+LinuxOPTIM=-O2 -Wall -Wextra -pedantic -std=c99 -Wunused-function -D_GNU_SOURCE
 
 ####################################
 #PARAGON 
@@ -277,7 +277,7 @@ Process_velocity.o: $(HEADER) Process_velocity.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_velocity.c
 
 Process_buoyancy.o: $(HEADER) Process_buoyancy.cu
-	$(NVCC) $(FLAGS)  $(OBJFLAG)  Process_buoyancy.cu
+	$(NVCC)  $(OBJFLAG)  Process_buoyancy.cu
 			
 Profiling.o: $(HEADER) Profiling.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Profiling.c
