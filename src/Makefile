@@ -20,7 +20,7 @@
 COMPRESS=/bin/gzip
 LIB_PATH=
 #LIB_LIST= -lmpi
-LIB_LIST= 
+LIB_LIST= -L/usr/local/cuda-12.0/lib64 -lcuda -lcudart
 LIB= $(LIB_PATH) $(LIB_LIST) -lm
 
 
@@ -187,7 +187,7 @@ citcom.mpi: $(OBJFILES) $(HEADER) Makefile
 #	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c  $(CFILES)
 	$(NVCC) -D_Bool=bool -c $(CUFILES)
-	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi   -L/usr/local/cuda-12.0/lib64 -lcuda -lcudart $(OBJFILES)  $(FFTLIB)  $(LIB)
+	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi  $(OBJFILES)  $(FFTLIB)  $(LIB)
 
 clean:
 	rm -f *.o
