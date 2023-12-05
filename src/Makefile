@@ -186,7 +186,7 @@ default: citcom.mpi
 citcom.mpi: $(OBJFILES) $(HEADER) Makefile
 #	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c  $(CFILES)
-	$(NVCC) -c $(CUFILES)
+	$(NVCC) -D_Bool=bool -c $(CUFILES)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 
 clean:
@@ -277,7 +277,7 @@ Process_velocity.o: $(HEADER) Process_velocity.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Process_velocity.c
 
 Process_buoyancy.o: $(HEADER) Process_buoyancy.cu
-	$(NVCC)  $(OBJFLAG)  Process_buoyancy.cu
+	$(NVCC) -D_Bool=bool $(OBJFLAG)  Process_buoyancy.cu
 			
 Profiling.o: $(HEADER) Profiling.c
 	$(CC) $(OPTIM) $(FLAGS)  $(OBJFLAG)  Profiling.c
