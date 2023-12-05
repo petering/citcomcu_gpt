@@ -41,26 +41,31 @@
     get output the next time around the velocity solver);
     */
 
-#include <math.h>
-#include <malloc.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <stdlib.h>				/* for "system" command */
-#include <cuda_runtime.h>
+extern "C"{
 
-#include "element_definitions.h"
-#include "global_defs.h"
+	#include <math.h>
+	#include <malloc.h>
+	#include <sys/time.h>
+	#include <sys/types.h>
+	#include <stdlib.h>				/* for "system" command */
+	#include <cuda_runtime.h>
 
+	#include "element_definitions.h"
+	#include "global_defs.h"
 
-void process_temp_field(struct All_variables *E, int ii)
-{
-	if(((ii % E->control.record_every) == 0))
-	{
-		heat_flux(E);
-		/* output_temp(E,ii); */
-	}
-	return;
 }
+
+
+extern "C{
+	void process_temp_field(struct All_variables *E, int ii)
+	{
+		if(((ii % E->control.record_every) == 0))
+		{
+			heat_flux(E);
+			/* output_temp(E,ii); */
+		}
+		return;
+	}
 
 
 void heat_flux(struct All_variables *E)
@@ -204,6 +209,7 @@ void heat_flux(struct All_variables *E)
 
 	return;
 }
+}
 /* ===================
 	分开调用
     GPU caculate  
@@ -243,7 +249,7 @@ __global__ void vecMulKernel_3(float* A_d, float* B_d, float* C_d, int n,int i)
 }
 
 
-
+extern "C"{
 int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, double * Nppt, int * node) 
 {
     size_t size = (n+1) * sizeof(float);
@@ -505,4 +511,5 @@ void plume_buoyancy_flux(struct All_variables *E)
 	E->data.buoy_flux = outp[0];
 
 	return;
+}
 }
