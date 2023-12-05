@@ -187,7 +187,7 @@ citcom.mpi: $(OBJFILES) $(HEADER) Makefile
 #	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -c  $(CFILES)
 	$(NVCC) -D_Bool=bool -c $(CUFILES)
-	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
+	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -L/usr/local/cuda-10.0/lib64 -lcuda -lcudart -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
 
 clean:
 	rm -f *.o
