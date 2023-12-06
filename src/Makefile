@@ -189,6 +189,12 @@ citcom.mpi: $(OBJFILES) $(HEADER) Makefile
 	$(NVCC) -D_Bool=bool -c $(CUFILES)
 	$(CC) $(OBJFILES) $(OPTIM) $(FLAGS) $(LDFLAGS) $(LIB) -w -o citcom.mpi $(FFTLIB)  
 
+pg: $(OBJFILES) $(HEADER) Makefile
+#	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -o citcom.mpi $(OBJFILES)  $(FFTLIB)  $(LIB)
+	$(CC) $(OPTIM) $(FLAGS) $(LDFLAGS) -pg -c  $(CFILES)
+	$(NVCC) -D_Bool=bool -pg -c $(CUFILES)
+	$(CC) $(OBJFILES) $(OPTIM) $(FLAGS) $(LDFLAGS) $(LIB) -pg -w -o citcom.mpi $(FFTLIB) 
+
 clean:
 	rm -f *.o
 
