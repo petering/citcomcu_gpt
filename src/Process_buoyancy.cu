@@ -211,97 +211,26 @@ void heat_flux(struct All_variables *E)
 }
 }
 /* ===================
-	分开调用
     GPU caculate  
-	n == ends
-	A_d == VZ 
-	B_d == E->ppt
-	C_d == u
-
-	A_d == E->T[X] X == E->ien[e].node
-	B_d == E->N.ppt
-	C_d == T
-
-	A_d == E->T[X] X == E->ien[e].node
-	B_d == E->gNX[e].ppt
-	C_d == dTdz
    =================== */
 
-__global__ void vecMulKernel_1(float* A_d, float* B_d, float* C_d, int n,int i)
-{
-	int j = threadIdx.x + blockDim.x * blockIdx.x;
-	int index = ((1*((j)-1)) + ((i)-1));
-	if(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];
-}
+__global__ void computeValues(float *VZ, float *u, float *T, float *dTdz, float *ppt, int *node, float *E_T, float *gNX, int ends, int ppts, int e) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    if (i <= ppts) {
+        u[i] = 0.0;
+        T[i] = 0.0;
+        dTdz[i] = 0.0;
 
-__global__ void vecMulKernel_2(float* A_d, float* B_d, float* C_d, int * D_d, int n,int i)
-{
-	int j = threadIdx.x + blockDim.x * blockIdx.x;
-	int index = GNPINDEX(j,i);
-	if(j > 0 && j <= n) C_d[j] = A_d[D_d[j]] * B_d[index];
-}
-
-__global__ void vecMulKernel_3(float* A_d, float* B_d, float* C_d, int n,int i)
-{
-	int j = threadIdx.x + blockDim.x * blockIdx.x;
-	int index = GNPINDEX(j,i);
-	if(j > 0 && j <= n) C_d[j] = A_d[j] * B_d[index];
+        for (int j = 1; j <= ends; j++) {
+            u[i] += VZ[j] * ppt[GNPINDEX(j, i)];
+            T[i] += E_T[node[j]] * ppt[GNPINDEX(j, i)];
+            dTdz[i] += -E_T[node[j]] * gNX[GNPXINDEX(2, j, i)];
+        }
+    }
 }
 
 
 extern "C"{
-int vecGPU(int n, int e, int i, float *u, float* T, float *dTdz, float *VZ, double * Nppt, int * node) 
-{
-    size_t size = (n+1) * sizeof(float);
-	size_t size_double = (n+1) * sizeof(double);
-
-    // host memery--no need
-
-    float *da = NULL;
-    float *db = NULL;
-    float *dc = NULL;
-
-    cudaMalloc((void **)&da, size);
-    cudaMalloc((void **)&db, size_double);
-    cudaMalloc((void **)&dc, size);
-
-    cudaMemcpy(da,VZ,size,cudaMemcpyHostToDevice);
-    cudaMemcpy(db,Nppt,size_double,cudaMemcpyHostToDevice);
-    cudaMemcpy(dc,u,size,cudaMemcpyHostToDevice);
-
-    struct timeval t1, t2;
-
-    int threadPerBlock = 256;
-    int blockPerGrid = (n + threadPerBlock - 1)/threadPerBlock;
-    printf("threadPerBlock: %d \nblockPerGrid: %d \n",threadPerBlock,blockPerGrid);
-
-    gettimeofday(&t1, NULL);
-
-    vecMulKernel_1 <<< blockPerGrid, threadPerBlock >>> (da, db, dc, n, i);
-
-    gettimeofday(&t2, NULL);
-
-    cudaMemcpy(u,dc,size,cudaMemcpyDeviceToHost);
-	float sum = 0.0;
-	for(int k = 1; k <= n; k++)
-	{
-		sum += u[k]; 
-	}
-	u[i] = sum;
-    //for (int i = 0; i < 10; i++) 
-    //    cout << vecA[i] << " " << vecB[i] << " " << vecC[i] << endl;
-    double timeuse = (t2.tv_sec - t1.tv_sec) + (double)(t2.tv_usec - t1.tv_usec)/1000000.0;
-	printf("timeuse : %le\n", timeuse);
-
-    cudaFree(da);
-    cudaFree(db);
-    cudaFree(dc);
-
-    // free(a);
-    // free(b);
-    // free(c);
-    return 0;
-}
 
 /* ===================
     Surface heat flux  
@@ -346,26 +275,65 @@ void heat_flux1(struct All_variables *E)
 		for(j = 1; j <= ends; j++)
 			VZ[j] = E->V[3][E->ien[e].node[j]];
 
-		for(i = 1; i <= ppts; i++)
-		{
-			u[i] = 0.0;
-			T[i] = 0.0;
-			dTdz[i] = 0.0;
-			/**
-			 * @brief 这里尝试用GPU加速
-			 *        1. 需传入的参数为：1. ends,e，i
-			 * 		  2.  float *u,float *T,float *dTdz,VZ[j],(double)E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[]
-			 * 		 2. 返回三个数组的结果
-			 * 		3. 对返回结果进行加和赋值给i
-			 */
-			vecGPU(ends, e, i, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node);
-			for(j = 1; j <= ends; j++)
-			{
-				//u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
-				T[i] += E->T[E->ien[e].node[j]] * E->N.ppt[GNPINDEX(j, i)];
-				dTdz[i] += -E->T[E->ien[e].node[j]] * E->gNX[e].ppt[GNPXINDEX(2, j, i)];
-			}
-		}
+		// for(i = 1; i <= ppts; i++)
+		// {
+		// 	u[i] = 0.0;
+		// 	T[i] = 0.0;
+		// 	dTdz[i] = 0.0;
+		// 	/**
+		// 	 * @brief 这里尝试用GPU加速
+		// 	 *        1. 需传入的参数为：1. ends,e，i
+		// 	 * 		  2.  float *u,float *T,float *dTdz,VZ[j],(double)E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[]
+		// 	 * 		 2. 返回三个数组的结果
+		// 	 * 		3. 对返回结果进行加和赋值给i
+		// 	 */
+		// 	// vecGPU(ends, e, i, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node);
+		// 	// for(j = 1; j <= ends; j++)
+		// 	// {
+		// 	// 	//u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
+		// 	// 	T[i] += E->T[E->ien[e].node[j]] * E->N.ppt[GNPINDEX(j, i)];
+		// 	// 	dTdz[i] += -E->T[E->ien[e].node[j]] * E->gNX[e].ppt[GNPXINDEX(2, j, i)];
+		// 	// }
+		// 	vecGPU(E);
+		// }
+		
+		// 在 GPU 上分配内存
+		float *d_VZ, *d_N_ppt, *d_T, *d_dTdz, *d_T_nodes, *d_gNX_ppt;
+		int *d_ien_nodes;
+		cudaMalloc((void **)&d_VZ, ends * sizeof(float));
+		cudaMalloc((void **)&d_N_ppt, ends * ppts * sizeof(float));
+		cudaMalloc((void **)&d_T, ppts * sizeof(float));
+		cudaMalloc((void **)&d_dTdz, ppts * sizeof(float));
+		cudaMalloc((void **)&d_T_nodes, nno * sizeof(float));
+		cudaMalloc((void **)&d_gNX_ppt, ends * ppts * sizeof(float));
+		cudaMalloc((void **)&d_ien_nodes, ends * sizeof(int));
+
+		// 将数据从主机内存传输到 GPU
+		cudaMemcpy(d_VZ, VZ, ends * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_N_ppt, E->N.ppt, ends * ppts * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_T_nodes, E->T, nno * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_gNX_ppt, E->gNX[e].ppt, ends * ppts * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_ien_nodes, E->ien[e].node, ends * sizeof(int), cudaMemcpyHostToDevice);
+
+		// 根据线程数启动 CUDA 核函数
+		int threadsPerBlock = 256;
+		int blocksPerGrid = (ppts + threadsPerBlock - 1) / threadsPerBlock;
+		calculateValues<<<blocksPerGrid, threadsPerBlock>>>(d_VZ, d_N_ppt, d_T, d_dTdz, d_T_nodes, d_gNX_ppt, d_ien_nodes, ends, ppts);
+		cudaDeviceSynchronize();
+
+		// 将计算结果从 GPU 复制回主机内存
+		cudaMemcpy(u, d_u, ppts * sizeof(float), cudaMemcpyDeviceToHost);
+		cudaMemcpy(T, d_T, ppts * sizeof(float), cudaMemcpyDeviceToHost);
+		cudaMemcpy(dTdz, d_dTdz, ppts * sizeof(float), cudaMemcpyDeviceToHost);
+
+		// 释放 GPU 内存
+		cudaFree(d_VZ);
+		cudaFree(d_N_ppt);
+		cudaFree(d_T);
+		cudaFree(d_dTdz);
+		cudaFree(d_T_nodes);
+		cudaFree(d_gNX_ppt);
+		cudaFree(d_ien_nodes);
 
 		uT = 0.0;
 		area = 0.0;
