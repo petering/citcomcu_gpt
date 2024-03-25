@@ -67,15 +67,31 @@ extern "C"{
 		return;
 	}
 
-__global__ void compute_flux(float *u, float *T, float *T1, float *dTdz, float *VZ, float *N_vpt, float *T_array, float *Have_T, float *gNX_vpt, int *ien_node, int lmesh_noz, int ends, int vpts, int e) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid < ends) {
-        int lnode = (ien_node[e * ends + tid] - 1) % lmesh_noz + 1;
-        for (int i = 0; i < vpts; i++) {
-            u[i] += VZ[tid] * N_vpt[GNVINDEX(tid + 1, i + 1)];
-            T[i] += T_array[ien_node[e * ends + tid]] * N_vpt[GNVINDEX(tid + 1, i + 1)];
-            T1[i] += (T_array[ien_node[e * ends + tid]] - Have_T[lnode]) * N_vpt[GNVINDEX(tid + 1, i + 1)];
-            dTdz[i] += T_array[ien_node[e * ends + tid]] * gNX_vpt[GNVXINDEX(2, tid + 1, i + 1)];
+__global__ void compute_variables_kernel(struct All_variables *E, float *u, float *T, float *T1, float *dTdz, float *VZ, int *ien, float *N_vpt, float *TWW, float *gNX, int ends, int vpts) {
+    int e = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    if (e <= E->lmesh.nel) {
+        int ee = (e - 1) % E->lmesh.elz + 1;
+
+        for (int i = threadIdx.y + 1; i <= vpts; i += blockDim.y) {
+            float u_val = 0.0f;
+            float T_val = 0.0f;
+            float T1_val = 0.0f;
+            float dTdz_val = 0.0f;
+
+            for (int j = threadIdx.z + 1; j <= ends; j += blockDim.z) {
+                int lnode = (ien[e * ends + j] - 1) % E->lmesh.noz + 1;
+
+                u_val += VZ[j] * N_vpt[j * vpts + i];
+                T_val += E->T[ien[e * ends + j]] * N_vpt[j * vpts + i];
+                T1_val += (E->T[ien[e * ends + j]] - E->Have.T[lnode]) * N_vpt[j * vpts + i];
+                dTdz_val += E->T[ien[e * ends + j]] * gNX[e * ends * vpts + GNVXINDEX(2, j, i)];
+            }
+
+            // Atomic operations to avoid race conditions
+            atomicAdd(&u[i], u_val);
+            atomicAdd(&T[i], T_val);
+            atomicAdd(&T1[i], T1_val);
+            atomicAdd(&dTdz[i], dTdz_val);
         }
     }
 }
@@ -137,44 +153,69 @@ void heat_flux(struct All_variables *E)
 			T[i] = 0.0;
 			dTdz[i] = 0.0;
 			T1[i] = 0.0;
-			// for(j = 1; j <= ends; j++)
-			// {
+// 			for(j = 1; j <= ends; j++)
+// 			{
 
-			// 	lnode = (E->ien[e].node[j] - 1) % E->lmesh.noz + 1;
+// 				lnode = (E->ien[e].node[j] - 1) % E->lmesh.noz + 1;
 
-			// 	u[i] += VZ[j] * E->N.vpt[GNVINDEX(j, i)];
-			// 	T[i] += E->T[E->ien[e].node[j]] * E->N.vpt[GNVINDEX(j, i)];
-			// 	T1[i] += (E->T[E->ien[e].node[j]] - E->Have.T[lnode]) * E->N.vpt[GNVINDEX(j, i)];
-			// 	dTdz[i] = dTdz[i] + E->T[E->ien[e].node[j]] * E->gNX[e].vpt[GNVXINDEX(2, j, i)];
-			// }
-   float *d_u, *d_T, *d_T1, *d_dTdz, *d_VZ, *d_N_vpt, *d_T_array, *d_Have_T, *d_gNX_vpt;
-    int *d_ien_node;
-    cudaMalloc(&d_u, vpts * sizeof(float));
-    cudaMalloc(&d_T, vpts * sizeof(float));
-    cudaMalloc(&d_T1, vpts * sizeof(float));
-    cudaMalloc(&d_dTdz, vpts * sizeof(float));
-    // Allocate and copy other arrays to device memory
+// 				u[i] += VZ[j] * E->N.vpt[GNVINDEX(j, i)];
+// 				T[i] += E->T[E->ien[e].node[j]] * E->N.vpt[GNVINDEX(j, i)];
+// 				T1[i] += (E->T[E->ien[e].node[j]] - E->Have.T[lnode]) * E->N.vpt[GNVINDEX(j, i)];
+// 				dTdz[i] = dTdz[i] + E->T[E->ien[e].node[j]] * E->gNX[e].vpt[GNVXINDEX(2, j, i)];
+// 			}
 
-    // Set block and grid dimensions
-    int blockSize = 256;
-    int numBlocks = (ends + blockSize - 1) / blockSize;
 
-    // Call CUDA kernel to compute flux
-    compute_flux<<<numBlocks, blockSize>>>(d_u, d_T, d_T1, d_dTdz, d_VZ, d_N_vpt, d_T_array, d_Have_T, d_gNX_vpt, d_ien_node, E->lmesh.noz, ends, vpts, e);
+  int vpts = vpoints[E->mesh.nsd];
+    int ends = enodes[E->mesh.nsd];
 
-    // Copy results back to host memory
-    cudaMemcpy(u, d_u, vpts * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(T, d_T, vpts * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(T1, d_T1, vpts * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(dTdz, d_dTdz, vpts * sizeof(float), cudaMemcpyDeviceToHost);
+    // Allocate device memory
+    float *d_u, *d_T, *d_T1, *d_dTdz, *d_VZ;
+    int *d_ien;
+    float *d_N_vpt, *d_TWW, *d_gNX;
+    cudaMalloc(&d_u, (vpts + 1) * sizeof(float));
+    cudaMalloc(&d_T, (vpts + 1) * sizeof(float));
+    cudaMalloc(&d_T1, (vpts + 1) * sizeof(float));
+    cudaMalloc(&d_dTdz, (vpts + 1) * sizeof(float));
+    cudaMalloc(&d_VZ, (ends + 1) * sizeof(float));
+    cudaMalloc(&d_ien, E->lmesh.nel * ends * sizeof(int));
+    cudaMalloc(&d_N_vpt, ends * vpts * sizeof(float));
+    cudaMalloc(&d_TWW, E->mesh.levmax * E->lmesh.nel * ends * sizeof(float));
+    cudaMalloc(&d_gNX, E->lmesh.nel * ends * vpts * sizeof(float));
+
+    // Copy data from host to device
+    cudaMemcpy(d_VZ, E->V[3], (ends + 1) * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ien, E->ien, E->lmesh.nel * ends * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N_vpt, E->N.vpt, ends * vpts * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_TWW, E->TWW, E->mesh.levmax * E->lmesh.nel * ends * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_gNX, E->gNX, E->lmesh.nel * ends * vpts * sizeof(float), cudaMemcpyHostToDevice);
+
+    // Initialize device arrays
+    cudaMemset(d_u, 0, (vpts + 1) * sizeof(float));
+    cudaMemset(d_T, 0, (vpts + 1) * sizeof(float));
+    cudaMemset(d_T1, 0, (vpts + 1) * sizeof(float));
+    cudaMemset(d_dTdz, 0, (vpts + 1) * sizeof(float));
+
+    // Launch kernel
+    dim3 blockSize(16, 4, 4); // Adjust according to your device's capabilities
+    dim3 gridSize((E->lmesh.nel + blockSize.x - 1) / blockSize.x, 1, 1); // Adjust grid size as needed
+    compute_variables_kernel<<<gridSize, blockSize>>>(E, d_u, d_T, d_T1, d_dTdz, d_VZ, d_ien, d_N_vpt, d_TWW, d_gNX, ends, vpts);
+
+    // Copy result back to host
+    cudaMemcpy(u, d_u, (vpts + 1) * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(T, d_T, (vpts + 1) * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(T1, d_T1, (vpts + 1) * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(dTdz, d_dTdz, (vpts + 1) * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Free device memory
     cudaFree(d_u);
     cudaFree(d_T);
     cudaFree(d_T1);
     cudaFree(d_dTdz);
-	// 确保所有计算完成
-cudaDeviceSynchronize();
+    cudaFree(d_VZ);
+    cudaFree(d_ien);
+    cudaFree(d_N_vpt);
+    cudaFree(d_TWW);
+    cudaFree(d_gNX);
 
 			uT = uT + (u[i] * T[i] - diff * dTdz[i]) * E->gDA[e].vpt[i];
 			uT_adv = uT_adv + u[i] * T1[i] * E->gDA[e].vpt[i];
