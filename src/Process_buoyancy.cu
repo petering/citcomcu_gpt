@@ -68,10 +68,10 @@ extern "C"{
 	}
 
 // CUDA内核函数
-__global__ void heat_flux_kernel(float* d_VZ, float* d_T, float* d_N_vpt, float* d_Have_T, float* d_gNX_vpt, int* d_ien_node, int e, int vpts, int ends, float* d_u, float* d_T1, float* d_dTdz) {
+__global__ void heat_flux_kernel(float* d_VZ, float* d_T, float* d_N_vpt, float* d_Have_T, float* d_gNX_vpt, int* d_ien_node, int e, int vpts, int ends, float* d_u, float* d_T1, float* d_dTdz,int nodez) {
     int j = threadIdx.x + blockIdx.x * blockDim.x;
     if (j <= ends) {
-        int lnode = (d_ien_node[j] - 1) % E->lmesh.noz + 1;
+        int lnode = (d_ien_node[j] - 1) % nodez + 1;
 
         int gnvindex = GNVINDEX(j, threadIdx.y);
         int gnvxindex = GNVXINDEX(2, j, threadIdx.y);
@@ -141,7 +141,7 @@ void heat_flux(struct All_variables *E)
 			T[i] = 0.0;
 			dTdz[i] = 0.0;
 			T1[i] = 0.0;
-			for(j = 1; j <= ends; j++)
+			// for(j = 1; j <= ends; j++)
 			// {
 
 			// 	lnode = (E->ien[e].node[j] - 1) % E->lmesh.noz + 1;
@@ -152,12 +152,20 @@ void heat_flux(struct All_variables *E)
 			// 	dTdz[i] = dTdz[i] + E->T[E->ien[e].node[j]] * E->gNX[e].vpt[GNVXINDEX(2, j, i)];
 			// }
 
+			// 设备端内存分配
+float* d_VZ;
+float* d_T;
+float* d_N_vpt;
+float* d_gNX_vpt;
+float* d_Have_T;
+int* d_ien_node;
+
 // 主机端数据复制至设备端
 cudaMalloc((void**)&d_VZ, sizeof(float) * ends);
 cudaMemcpy(d_VZ, E->VZ, sizeof(float) * ends, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_T, sizeof(float) * E->total_nodes);
-cudaMemcpy(d_T, E->T, sizeof(float) * E->total_nodes, cudaMemcpyHostToDevice);
+cudaMalloc((void**)&d_T, sizeof(float) * vpts);
+cudaMemcpy(d_T, E->T, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
 cudaMalloc((void**)&d_N_vpt, sizeof(float) * N_vpt_size);
 cudaMemcpy(d_N_vpt, E->N.vpt, sizeof(float) * N_vpt_size, cudaMemcpyHostToDevice);
@@ -184,7 +192,8 @@ int blocksPerGrid = (ends + threadsPerBlock - 1) / threadsPerBlock;
 dim3 block(threadsPerBlock, 1);
 dim3 grid(blocksPerGrid);
 
-heat_flux_kernel<<<grid, block>>>(d_VZ, d_T, d_N_vpt, d_Have_T, d_gNX_vpt, d_ien_node, e, vpts, ends, d_u, d_T1, d_dTdz);
+
+heat_flux_kernel<<<grid, block>>>(d_VZ, d_T, d_N_vpt, d_Have_T, d_gNX_vpt, d_ien_node, e, vpts, ends, d_u, d_T1, d_dTdz,E->lmesh.noz);
 
 // 确保CUDA内核执行完毕
 cudaDeviceSynchronize();
