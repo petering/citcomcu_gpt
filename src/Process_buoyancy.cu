@@ -162,22 +162,25 @@ int* d_ien_node;
 
 // 主机端数据复制至设备端
 cudaMalloc((void**)&d_VZ, sizeof(float) * ends);
-cudaMemcpy(d_VZ, E->VZ, sizeof(float) * ends, cudaMemcpyHostToDevice);
+cudaMemcpy(d_VZ, VZ, sizeof(float) * ends, cudaMemcpyHostToDevice);
 
 cudaMalloc((void**)&d_T, sizeof(float) * vpts);
 cudaMemcpy(d_T, E->T, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_N_vpt, sizeof(float) * N_vpt_size);
-cudaMemcpy(d_N_vpt, E->N.vpt, sizeof(float) * N_vpt_size, cudaMemcpyHostToDevice);
+cudaMalloc((void**)&d_N_vpt, sizeof(float) * vpts);
+cudaMemcpy(d_N_vpt, E->N.vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
 cudaMalloc((void**)&d_Have_T, sizeof(float) * E->lmesh.noz);
 cudaMemcpy(d_Have_T, E->Have.T, sizeof(float) * E->lmesh.noz, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_gNX_vpt, sizeof(float) * gNX_vpt_size);
-cudaMemcpy(d_gNX_vpt, E->gNX[e].vpt, sizeof(float) * gNX_vpt_size, cudaMemcpyHostToDevice);
+cudaMalloc((void**)&d_gNX_vpt, sizeof(float) * vpts);
+cudaMemcpy(d_gNX_vpt, E->gNX[e].vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
 cudaMalloc((void**)&d_ien_node, sizeof(int) * ends);
 cudaMemcpy(d_ien_node, E->ien[e].node, sizeof(int) * ends, cudaMemcpyHostToDevice);
+float* d_u;
+float* d_T1;
+float* dTdz;
 
 cudaMalloc((void**)&d_u, sizeof(float) * vpts);
 cudaMalloc((void**)&d_T1, sizeof(float) * vpts);
