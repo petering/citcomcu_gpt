@@ -173,6 +173,8 @@ void heat_flux(struct All_variables *E)
     cudaFree(d_T);
     cudaFree(d_T1);
     cudaFree(d_dTdz);
+	// 确保所有计算完成
+cudaDeviceSynchronize();
 
 			uT = uT + (u[i] * T[i] - diff * dTdz[i]) * E->gDA[e].vpt[i];
 			uT_adv = uT_adv + u[i] * T1[i] * E->gDA[e].vpt[i];
