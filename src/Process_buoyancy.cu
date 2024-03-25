@@ -67,6 +67,18 @@ extern "C"{
 		return;
 	}
 
+__global__ void compute_flux(float *u, float *T, float *T1, float *dTdz, float *VZ, float *N_vpt, float *T_array, float *Have_T, float *gNX_vpt, int *ien_node, int lmesh_noz, int ends, int vpts, int e) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < ends) {
+        int lnode = (ien_node[e * ends + tid] - 1) % lmesh_noz + 1;
+        for (int i = 0; i < vpts; i++) {
+            u[i] += VZ[tid] * N_vpt[GNVINDEX(tid + 1, i + 1)];
+            T[i] += T_array[ien_node[e * ends + tid]] * N_vpt[GNVINDEX(tid + 1, i + 1)];
+            T1[i] += (T_array[ien_node[e * ends + tid]] - Have_T[lnode]) * N_vpt[GNVINDEX(tid + 1, i + 1)];
+            dTdz[i] += T_array[ien_node[e * ends + tid]] * gNX_vpt[GNVXINDEX(2, tid + 1, i + 1)];
+        }
+    }
+}
 
 void heat_flux(struct All_variables *E)
 {
@@ -125,16 +137,43 @@ void heat_flux(struct All_variables *E)
 			T[i] = 0.0;
 			dTdz[i] = 0.0;
 			T1[i] = 0.0;
-			for(j = 1; j <= ends; j++)
-			{
+			// for(j = 1; j <= ends; j++)
+			// {
 
-				lnode = (E->ien[e].node[j] - 1) % E->lmesh.noz + 1;
+			// 	lnode = (E->ien[e].node[j] - 1) % E->lmesh.noz + 1;
 
-				u[i] += VZ[j] * E->N.vpt[GNVINDEX(j, i)];
-				T[i] += E->T[E->ien[e].node[j]] * E->N.vpt[GNVINDEX(j, i)];
-				T1[i] += (E->T[E->ien[e].node[j]] - E->Have.T[lnode]) * E->N.vpt[GNVINDEX(j, i)];
-				dTdz[i] = dTdz[i] + E->T[E->ien[e].node[j]] * E->gNX[e].vpt[GNVXINDEX(2, j, i)];
-			}
+			// 	u[i] += VZ[j] * E->N.vpt[GNVINDEX(j, i)];
+			// 	T[i] += E->T[E->ien[e].node[j]] * E->N.vpt[GNVINDEX(j, i)];
+			// 	T1[i] += (E->T[E->ien[e].node[j]] - E->Have.T[lnode]) * E->N.vpt[GNVINDEX(j, i)];
+			// 	dTdz[i] = dTdz[i] + E->T[E->ien[e].node[j]] * E->gNX[e].vpt[GNVXINDEX(2, j, i)];
+			// }
+   float *d_u, *d_T, *d_T1, *d_dTdz, *d_VZ, *d_N_vpt, *d_T_array, *d_Have_T, *d_gNX_vpt;
+    int *d_ien_node;
+    cudaMalloc(&d_u, vpts * sizeof(float));
+    cudaMalloc(&d_T, vpts * sizeof(float));
+    cudaMalloc(&d_T1, vpts * sizeof(float));
+    cudaMalloc(&d_dTdz, vpts * sizeof(float));
+    // Allocate and copy other arrays to device memory
+
+    // Set block and grid dimensions
+    int blockSize = 256;
+    int numBlocks = (ends + blockSize - 1) / blockSize;
+
+    // Call CUDA kernel to compute flux
+    compute_flux<<<numBlocks, blockSize>>>(d_u, d_T, d_T1, d_dTdz, d_VZ, d_N_vpt, d_T_array, d_Have_T, d_gNX_vpt, d_ien_node, E->lmesh.noz, ends, vpts, e);
+
+    // Copy results back to host memory
+    cudaMemcpy(u, d_u, vpts * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(T, d_T, vpts * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(T1, d_T1, vpts * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(dTdz, d_dTdz, vpts * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Free device memory
+    cudaFree(d_u);
+    cudaFree(d_T);
+    cudaFree(d_T1);
+    cudaFree(d_dTdz);
+
 			uT = uT + (u[i] * T[i] - diff * dTdz[i]) * E->gDA[e].vpt[i];
 			uT_adv = uT_adv + u[i] * T1[i] * E->gDA[e].vpt[i];
 			uT_adv_s = uT_adv_s + u[i] * fabs(T1[i]) * E->gDA[e].vpt[i];
@@ -235,7 +274,6 @@ extern "C"{
 /* ===================
     Surface heat flux  
    =================== */
-
 void heat_flux1(struct All_variables *E)
 {
 	//int e, i, j, node, lnode;
@@ -275,65 +313,18 @@ void heat_flux1(struct All_variables *E)
 		for(j = 1; j <= ends; j++)
 			VZ[j] = E->V[3][E->ien[e].node[j]];
 
-		// for(i = 1; i <= ppts; i++)
-		// {
-		// 	u[i] = 0.0;
-		// 	T[i] = 0.0;
-		// 	dTdz[i] = 0.0;
-		// 	/**
-		// 	 * @brief 这里尝试用GPU加速
-		// 	 *        1. 需传入的参数为：1. ends,e，i
-		// 	 * 		  2.  float *u,float *T,float *dTdz,VZ[j],(double)E->N.ppt[],E->ien[e].ndoe[],E->gNX[e].ppt[]
-		// 	 * 		 2. 返回三个数组的结果
-		// 	 * 		3. 对返回结果进行加和赋值给i
-		// 	 */
-		// 	// vecGPU(ends, e, i, u, T, dTdz, VZ, E->N.ppt, E->ien[e].node);
-		// 	// for(j = 1; j <= ends; j++)
-		// 	// {
-		// 	// 	//u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
-		// 	// 	T[i] += E->T[E->ien[e].node[j]] * E->N.ppt[GNPINDEX(j, i)];
-		// 	// 	dTdz[i] += -E->T[E->ien[e].node[j]] * E->gNX[e].ppt[GNPXINDEX(2, j, i)];
-		// 	// }
-		// 	vecGPU(E);
-		// }
-		
-		// 在 GPU 上分配内存
-		float *d_VZ, *d_N_ppt, *d_T, *d_dTdz, *d_T_nodes, *d_gNX_ppt;
-		int *d_ien_nodes;
-		cudaMalloc((void **)&d_VZ, ends * sizeof(float));
-		cudaMalloc((void **)&d_N_ppt, ends * ppts * sizeof(float));
-		cudaMalloc((void **)&d_T, ppts * sizeof(float));
-		cudaMalloc((void **)&d_dTdz, ppts * sizeof(float));
-		cudaMalloc((void **)&d_T_nodes, nno * sizeof(float));
-		cudaMalloc((void **)&d_gNX_ppt, ends * ppts * sizeof(float));
-		cudaMalloc((void **)&d_ien_nodes, ends * sizeof(int));
-
-		// 将数据从主机内存传输到 GPU
-		cudaMemcpy(d_VZ, VZ, ends * sizeof(float), cudaMemcpyHostToDevice);
-		cudaMemcpy(d_N_ppt, E->N.ppt, ends * ppts * sizeof(float), cudaMemcpyHostToDevice);
-		cudaMemcpy(d_T_nodes, E->T, nno * sizeof(float), cudaMemcpyHostToDevice);
-		cudaMemcpy(d_gNX_ppt, E->gNX[e].ppt, ends * ppts * sizeof(float), cudaMemcpyHostToDevice);
-		cudaMemcpy(d_ien_nodes, E->ien[e].node, ends * sizeof(int), cudaMemcpyHostToDevice);
-
-		// 根据线程数启动 CUDA 核函数
-		int threadsPerBlock = 256;
-		int blocksPerGrid = (ppts + threadsPerBlock - 1) / threadsPerBlock;
-		calculateValues<<<blocksPerGrid, threadsPerBlock>>>(d_VZ, d_N_ppt, d_T, d_dTdz, d_T_nodes, d_gNX_ppt, d_ien_nodes, ends, ppts);
-		cudaDeviceSynchronize();
-
-		// 将计算结果从 GPU 复制回主机内存
-		cudaMemcpy(u, d_u, ppts * sizeof(float), cudaMemcpyDeviceToHost);
-		cudaMemcpy(T, d_T, ppts * sizeof(float), cudaMemcpyDeviceToHost);
-		cudaMemcpy(dTdz, d_dTdz, ppts * sizeof(float), cudaMemcpyDeviceToHost);
-
-		// 释放 GPU 内存
-		cudaFree(d_VZ);
-		cudaFree(d_N_ppt);
-		cudaFree(d_T);
-		cudaFree(d_dTdz);
-		cudaFree(d_T_nodes);
-		cudaFree(d_gNX_ppt);
-		cudaFree(d_ien_nodes);
+		for(i = 1; i <= ppts; i++)
+		{
+			u[i] = 0.0;
+			T[i] = 0.0;
+			dTdz[i] = 0.0;
+			for(j = 1; j <= ends; j++)
+			{
+				u[i] += VZ[j] * E->N.ppt[GNPINDEX(j, i)];
+				T[i] += E->T[E->ien[e].node[j]] * E->N.ppt[GNPINDEX(j, i)];
+				dTdz[i] += -E->T[E->ien[e].node[j]] * E->gNX[e].ppt[GNPXINDEX(2, j, i)];
+			}
+		}
 
 		uT = 0.0;
 		area = 0.0;
@@ -416,6 +407,7 @@ void heat_flux1(struct All_variables *E)
 
 	return;
 }
+
 
 void plume_buoyancy_flux(struct All_variables *E)
 {
