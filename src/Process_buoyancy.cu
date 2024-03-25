@@ -180,14 +180,14 @@ cudaMalloc((void**)&d_ien_node, sizeof(int) * ends);
 cudaMemcpy(d_ien_node, E->ien[e].node, sizeof(int) * ends, cudaMemcpyHostToDevice);
 float* d_u;
 float* d_T1;
-float* dTdz;
+float* d_dTdz;
 
 cudaMalloc((void**)&d_u, sizeof(float) * vpts);
 cudaMalloc((void**)&d_T1, sizeof(float) * vpts);
 cudaMalloc((void**)&dTdz, sizeof(float) * vpts);
 cudaMemset(d_u, 0, sizeof(float) * vpts);
 cudaMemset(d_T1, 0, sizeof(float) * vpts);
-cudaMemset(dTdz, 0, sizeof(float) * vpts);
+cudaMemset(d_dTdz, 0, sizeof(float) * vpts);
 
 // 启动CUDA内核函数
 int threadsPerBlock = 256; // 可根据实际情况调整
