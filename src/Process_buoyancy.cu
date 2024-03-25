@@ -184,7 +184,7 @@ float* d_dTdz;
 
 cudaMalloc((void**)&d_u, sizeof(float) * vpts);
 cudaMalloc((void**)&d_T1, sizeof(float) * vpts);
-cudaMalloc((void**)&dTdz, sizeof(float) * vpts);
+cudaMalloc((void**)&d_dTdz, sizeof(float) * vpts);
 cudaMemset(d_u, 0, sizeof(float) * vpts);
 cudaMemset(d_T1, 0, sizeof(float) * vpts);
 cudaMemset(d_dTdz, 0, sizeof(float) * vpts);
