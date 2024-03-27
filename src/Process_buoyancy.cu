@@ -160,24 +160,43 @@ float* d_gNX_vpt;
 float* d_Have_T;
 int* d_ien_node;
 
-// 主机端数据复制至设备端
-cudaMalloc((void**)&d_VZ, sizeof(float) * ends);
-cudaMemcpy(d_VZ, VZ, sizeof(float) * ends, cudaMemcpyHostToDevice);
+// // 主机端数据复制至设备端
+// cudaMalloc((void**)&d_VZ, sizeof(float) * ends);
+// cudaMemcpy(d_VZ, VZ, sizeof(float) * ends, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_T, sizeof(float) * vpts);
-cudaMemcpy(d_T, E->T, sizeof(float) * vpts, cudaMemcpyHostToDevice);
+// cudaMalloc((void**)&d_T, sizeof(float) * vpts);
+// cudaMemcpy(d_T, E->T, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_N_vpt, sizeof(float) * vpts);
-cudaMemcpy(d_N_vpt, E->N.vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice);
+// cudaMalloc((void**)&d_N_vpt, sizeof(float) * vpts);
+// cudaMemcpy(d_N_vpt, E->N.vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_Have_T, sizeof(float) * E->lmesh.noz);
-cudaMemcpy(d_Have_T, E->Have.T, sizeof(float) * E->lmesh.noz, cudaMemcpyHostToDevice);
+// cudaMalloc((void**)&d_Have_T, sizeof(float) * E->lmesh.noz);
+// cudaMemcpy(d_Have_T, E->Have.T, sizeof(float) * E->lmesh.noz, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_gNX_vpt, sizeof(float) * vpts);
-cudaMemcpy(d_gNX_vpt, E->gNX[e].vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice);
+// cudaMalloc((void**)&d_gNX_vpt, sizeof(float) * vpts);
+// cudaMemcpy(d_gNX_vpt, E->gNX[e].vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice);
 
-cudaMalloc((void**)&d_ien_node, sizeof(int) * ends);
-cudaMemcpy(d_ien_node, E->ien[e].node, sizeof(int) * ends, cudaMemcpyHostToDevice);
+// cudaMalloc((void**)&d_ien_node, sizeof(int) * ends);
+// cudaMemcpy(d_ien_node, E->ien[e].node, sizeof(int) * ends, cudaMemcpyHostToDevice);
+// 异步主机端数据复制至设备端
+cudaMallocAsync((void**)&d_VZ, sizeof(float) * ends, stream);
+cudaMemcpyAsync(d_VZ, VZ, sizeof(float) * ends, cudaMemcpyHostToDevice, stream);
+
+cudaMallocAsync((void**)&d_T, sizeof(float) * vpts, stream);
+cudaMemcpyAsync(d_T, E->T, sizeof(float) * vpts, cudaMemcpyHostToDevice, stream);
+
+cudaMallocAsync((void**)&d_N_vpt, sizeof(float) * vpts, stream);
+cudaMemcpyAsync(d_N_vpt, E->N.vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice, stream);
+
+cudaMallocAsync((void**)&d_Have_T, sizeof(float) * E->lmesh.noz, stream);
+cudaMemcpyAsync(d_Have_T, E->Have.T, sizeof(float) * E->lmesh.noz, cudaMemcpyHostToDevice, stream);
+
+cudaMallocAsync((void**)&d_gNX_vpt, sizeof(float) * vpts, stream);
+cudaMemcpyAsync(d_gNX_vpt, E->gNX[e].vpt, sizeof(float) * vpts, cudaMemcpyHostToDevice, stream);
+
+cudaMallocAsync((void**)&d_ien_node, sizeof(int) * ends, stream);
+cudaMemcpyAsync(d_ien_node, E->ien[e].node, sizeof(int) * ends, cudaMemcpyHostToDevice, stream);
+
 float* d_u;
 float* d_T1;
 float* d_dTdz;
@@ -185,9 +204,12 @@ float* d_dTdz;
 cudaMalloc((void**)&d_u, sizeof(float) * vpts);
 cudaMalloc((void**)&d_T1, sizeof(float) * vpts);
 cudaMalloc((void**)&d_dTdz, sizeof(float) * vpts);
-cudaMemset(d_u, 0, sizeof(float) * vpts);
-cudaMemset(d_T1, 0, sizeof(float) * vpts);
-cudaMemset(d_dTdz, 0, sizeof(float) * vpts);
+// cudaMemset(d_u, 0, sizeof(float) * vpts);
+// cudaMemset(d_T1, 0, sizeof(float) * vpts);
+// cudaMemset(d_dTdz, 0, sizeof(float) * vpts);
+cudaMemsetAsync(d_u, 0, sizeof(float) * vpts, stream);
+cudaMemsetAsync(d_T1, 0, sizeof(float) * vpts, stream);
+cudaMemsetAsync(d_dTdz, 0, sizeof(float) * vpts, stream);
 
 // 启动CUDA内核函数
 int threadsPerBlock = 256; // 可根据实际情况调整
@@ -195,16 +217,37 @@ int blocksPerGrid = (ends + threadsPerBlock - 1) / threadsPerBlock;
 dim3 block(threadsPerBlock, 1);
 dim3 grid(blocksPerGrid);
 
+// 创建CUDA流
+cudaStream_t stream;
+cudaStreamCreate(&stream);
 
-heat_flux_kernel<<<grid, block>>>(d_VZ, d_T, d_N_vpt, d_Have_T, d_gNX_vpt, d_ien_node, e, vpts, ends, d_u, d_T1, d_dTdz,E->lmesh.noz);
+// 启动CUDA内核函数（在同一个流上）
+heat_flux_kernel<<<grid, block, 0, stream>>>(d_VZ, d_T, d_N_vpt, d_Have_T, d_gNX_vpt, d_ien_node, e, vpts, ends, d_u, d_T1, d_dTdz, E->lmesh.noz);
 
-// 确保CUDA内核执行完毕
-cudaDeviceSynchronize();
+// 异步等待CUDA内核执行完毕并同步流
+cudaStreamSynchronize(stream);
 
-// 如果需要，将结果从设备内存复制回主机内存
-cudaMemcpy(u, d_u, sizeof(float) * vpts, cudaMemcpyDeviceToHost);
-cudaMemcpy(T1, d_T1, sizeof(float) * vpts, cudaMemcpyDeviceToHost);
-cudaMemcpy(dTdz, d_dTdz, sizeof(float) * vpts, cudaMemcpyDeviceToHost);
+// 如果需要，将结果从设备内存异步复制回主机内存
+cudaMemcpyAsync(u, d_u, sizeof(float) * vpts, cudaMemcpyDeviceToHost, stream);
+cudaMemcpyAsync(T1, d_T1, sizeof(float) * vpts, cudaMemcpyDeviceToHost, stream);
+cudaMemcpyAsync(dTdz, d_dTdz, sizeof(float) * vpts, cudaMemcpyDeviceToHost, stream);
+
+// 确保所有异步操作完成
+cudaStreamSynchronize(stream);
+
+// 清理CUDA流
+cudaStreamDestroy(stream);
+
+
+// heat_flux_kernel<<<grid, block>>>(d_VZ, d_T, d_N_vpt, d_Have_T, d_gNX_vpt, d_ien_node, e, vpts, ends, d_u, d_T1, d_dTdz,E->lmesh.noz);
+
+// // 确保CUDA内核执行完毕
+// cudaDeviceSynchronize();
+
+// // 如果需要，将结果从设备内存复制回主机内存
+// cudaMemcpy(u, d_u, sizeof(float) * vpts, cudaMemcpyDeviceToHost);
+// cudaMemcpy(T1, d_T1, sizeof(float) * vpts, cudaMemcpyDeviceToHost);
+// cudaMemcpy(dTdz, d_dTdz, sizeof(float) * vpts, cudaMemcpyDeviceToHost);
 
 			uT = uT + (u[i] * T[i] - diff * dTdz[i]) * E->gDA[e].vpt[i];
 			uT_adv = uT_adv + u[i] * T1[i] * E->gDA[e].vpt[i];
