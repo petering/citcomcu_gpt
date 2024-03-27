@@ -178,6 +178,10 @@ int* d_ien_node;
 
 // cudaMalloc((void**)&d_ien_node, sizeof(int) * ends);
 // cudaMemcpy(d_ien_node, E->ien[e].node, sizeof(int) * ends, cudaMemcpyHostToDevice);
+
+// 创建CUDA流
+cudaStream_t stream;
+cudaStreamCreate(&stream);
 // 异步主机端数据复制至设备端
 cudaMallocAsync((void**)&d_VZ, sizeof(float) * ends, stream);
 cudaMemcpyAsync(d_VZ, VZ, sizeof(float) * ends, cudaMemcpyHostToDevice, stream);
@@ -211,15 +215,18 @@ cudaMemsetAsync(d_u, 0, sizeof(float) * vpts, stream);
 cudaMemsetAsync(d_T1, 0, sizeof(float) * vpts, stream);
 cudaMemsetAsync(d_dTdz, 0, sizeof(float) * vpts, stream);
 
+// 等待所有异步操作完成
+cudaStreamSynchronize(stream);
+
 // 启动CUDA内核函数
 int threadsPerBlock = 256; // 可根据实际情况调整
 int blocksPerGrid = (ends + threadsPerBlock - 1) / threadsPerBlock;
 dim3 block(threadsPerBlock, 1);
 dim3 grid(blocksPerGrid);
 
-// 创建CUDA流
-cudaStream_t stream;
-cudaStreamCreate(&stream);
+// // 创建CUDA流
+// cudaStream_t stream;
+// cudaStreamCreate(&stream);
 
 // 启动CUDA内核函数（在同一个流上）
 heat_flux_kernel<<<grid, block, 0, stream>>>(d_VZ, d_T, d_N_vpt, d_Have_T, d_gNX_vpt, d_ien_node, e, vpts, ends, d_u, d_T1, d_dTdz, E->lmesh.noz);
